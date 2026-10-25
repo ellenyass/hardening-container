@@ -1,14 +1,75 @@
 services:
-
   app:
     build: .
+    environment:
+      DB_HOST: banco
+      DB_PORT: "3306"
+      DB_USER: ${DB_USER:?DB_USER ausente. Copie .env.example para .env}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD ausente. Copie .env.example para .env}
+      DB_NAME: ${DB_NAME:?DB_NAME ausente. Copie .env.example para .env}
     ports:
-      - "3000:3000"
+      # Somente a aplicação fica acessível, e apenas no loopback do host.
+      - "127.0.0.1:3000:3000"
+    networks:
+      - interna
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 128M
+          pids: 64
 
   banco:
-    image: mysql:latest
+    image: mysql:8.4.13@sha256:76f0358884cb92d9a086d24e5671c38048d3fef40f2588703d73eb55392d6b69
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: sistema
-    ports:
-      - "3306:3306"
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD ausente. Copie .env.example para .env}
+      MYSQL_DATABASE: ${DB_NAME:?DB_NAME ausente. Copie .env.example para .env}
+      MYSQL_USER: ${DB_USER:?DB_USER ausente. Copie .env.example para .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD ausente. Copie .env.example para .env}
+    # A porta 3306 não é publicada. O banco só é alcançável na rede interna.
+    networks:
+      - interna
+    command: ["--mysqlx=0"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m
+      - /var/run/mysqld:rw,nosuid,nodev,mode=0750,uid=999,gid=999
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+          pids: 200
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+networks:
+  interna:
+    driver: bridge
+
+volumes:
+  mysql_data:
